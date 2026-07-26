@@ -80,7 +80,7 @@ jobs:
 
       # 【阶段 4】漏洞扫描 (锁定稳定版本，设置阻断规则)
       - name: Run Trivy Scanner
-        uses: aquasecurity/trivy-action@0.36.0 # ⚠️ 修复点 6: 避免使用 master
+        uses: aquasecurity/trivy-action@v0.36.0 # ⚠️ 修复点 6: 避免使用 master
         with:
           image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
           format: "table"
