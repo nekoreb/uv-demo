@@ -1,31 +1,36 @@
-name: CI
-run-name: AAA
+name: 01 - CI Quality Gate
 
 on:
+  pull_request:
+    branches: [main]
   push:
-    branches:
-      - main
+    branches: [main]
 
 jobs:
-  test:
+  lint-and-test:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
-          enable-cache: true
+          enable-cache: true # 依赖缓存，提升二次构建速度
 
-      - name: Install dependencies
-        run: |
-          uv sync --group dev
+      # 校正点：CI 环境中必须显式创建虚拟环境并同步 dev 依赖
+      - name: Install Dependencies
+        run: uv sync --group dev
 
-      - name: Lint
-        run: |
-          uv run ruff check .
+      - name: Run Ruff Lint
+        run: uv run ruff check .
 
-      - name: Test
-        run: |
-          echo hello
+      - name: Run Pytest & Generate Report
+        run: uv run pytest --junitxml=test-report.xml
+
+      # Phase 4: 上传测试报告作为 Artifact (流水线生命周期产物)
+      - name: Upload Test Report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: junit-test-report
+          path: test-report.xml
