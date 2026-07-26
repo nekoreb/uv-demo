@@ -1,0 +1,56 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: uv-demo
+  namespace: default
+  # K8s 官方推荐 6 大标准标签
+  labels:
+    app.kubernetes.io/name: spark-task-platform
+    app.kubernetes.io/instance: prod
+    app.kubernetes.io/version: "1.2.0"
+    app.kubernetes.io/component: worker
+    app.kubernetes.io/part-of: data-platform
+    app.kubernetes.io/managed-by: argocd
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: spark-task-platform
+      app.kubernetes.io/instance: prod
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: spark-task-platform
+        app.kubernetes.io/instance: prod
+        app.kubernetes.io/version: "1.2.0"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        fsGroup: 10001
+      containers:
+        - name: app
+          # 生产推荐模式：Helm 动态注入不可变的 Commit SHA Tag 或 sha256 Digest
+          image: harbor.internal/data/spark-task-platform:a82f91c
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            readOnlyRootFilesystem: true # 配合 ENV HOME=/tmp 完美运行
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+          ports:
+            - containerPort: 8080
+          resources:
+            requests:
+              cpu: "250m"
+              memory: "512Mi"
+            limits:
+              cpu: "1000m"
+              memory: "1Gi"
+          volumeMounts:
+            - name: tmp-volume
+              mountPath: /tmp # 可写空卷挂载，支持缓存与临时文件
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}

@@ -1,16 +1,49 @@
-name: 02 - Docker Build & Push GHCR
+name: 02 - Secure Supply Chain (Build, Scan, Sign)
 
 on:
   push:
-    branches: [main]
+    branches: ["main"]
+  # ⚠️ 修复点 2: 剔除了 pull_request，彻底隔绝恶意 Fork PR 提权风险
 
+# ⚠️ 修复点 1: 全局默认开启最严苛的只读权限
 permissions:
   contents: read
-  packages: write # 声明推送 GHCR 的最小必要权限
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  build-and-push:
+  # =========================================================
+  # 阶段 1：CI 代码质量门禁 (使用全局只读权限)
+  # =========================================================
+  quality-gate:
+    name: 1. CI Quality Gate
     runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          enable-cache: true
+      - run: uv sync --group dev
+      - run: uv run ruff check .
+      - run: uv run pytest
+
+  # =========================================================
+  # 阶段 2 ~ 5：构建、扫描与 Keyless 签名
+  # =========================================================
+  secure-build-and-sign:
+    name: 2-5. Build, Scan & Attest
+    needs: quality-gate
+    runs-on: ubuntu-latest
+
+    # ⚠️ 修复点 1 (最小权限): 仅在这个必须发布制品的 Job 中，按需临时提升特权
+    permissions:
+      contents: read
+      packages: write # 允许推送 Image 到 GHCR
+      id-token: write # 允许向 GitHub 申领 OIDC Token 用于 Cosign
+      security-events: write # 允许上传 Trivy 扫描结果
+
     steps:
       - uses: actions/checkout@v4
 
@@ -20,19 +53,49 @@ jobs:
       - name: Log in to GHCR
         uses: docker/login-action@v3
         with:
-          registry: ghcr.io
+          registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push Docker Image
+      - name: Extract Docker Metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: type=sha,format=long # ⚠️ 修复点 3: 严格抛弃 main，仅保留 Git SHA 不可变 Tag
+
+      # 【阶段 2 & 3】BuildKit 多阶段构建 + 自动生成 SBOM & Provenance
+      - name: Build and Push Image with Attestations
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           push: true
-          # 校正点：同时打上不可变 SHA Tag 与可变 Branch Tag
-          tags: |
-            ghcr.io/${{ github.repository }}:${{ github.sha }}
-            ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-          # Phase 5: 利用 GitHub Actions 原生后端实现 Docker Layer Cache
+          tags: ${{ steps.meta.outputs.tags }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # ⚠️ 修复点 4: 直接利用 BuildKit 深度整合的供应链安全特性
+          sbom: true
+          provenance: mode=max
+
+      # 【阶段 4】漏洞扫描 (锁定稳定版本，设置阻断规则)
+      - name: Run Trivy Scanner
+        uses: aquasecurity/trivy-action@0.28.0 # ⚠️ 修复点 6: 避免使用 master
+        with:
+          image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
+          format: "table"
+          exit-code: "1" # 发现高危漏洞即阻断发布
+          ignore-unfixed: true
+          vuln-type: "os,library"
+          severity: "CRITICAL,HIGH"
+
+      # 【阶段 5】Cosign 无密钥数字签名
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@v3.5.0
+
+      - name: Sign the Image
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          # 基于 GitHub Actions OIDC + Fulcio/Rekor 签署不可变 Digest
+          cosign sign --yes "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${DIGEST}"

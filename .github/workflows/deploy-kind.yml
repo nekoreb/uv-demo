@@ -1,0 +1,28 @@
+name: 03 - Deploy to Local Kind Cluster
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    # 校正点：使用精准的 Label 组合，确保精准落在目标 Local Kind Runner 上
+    runs-on:
+      - self-hosted
+      - linux
+      - kind
+      - local
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Deploy Immutable Image Tag to Kind
+        run: |
+          # 校正点：部署必须且仅能使用不可变 SHA Tag
+          IMAGE_URI="ghcr.io/${{ github.repository }}:${{ github.sha }}"
+
+          # Sandbox 阶段使用 sed 替换；后续可升级为 kustomize edit set image / helm
+          sed -i 's|APP_IMAGE_PLACEHOLDER|'$IMAGE_URI'|g' k8s/deployment.yaml
+
+          kubectl apply -f k8s/deployment.yaml
+          kubectl rollout status deployment/uv-demo-app --timeout=60s
