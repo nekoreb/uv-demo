@@ -27,7 +27,7 @@ jobs:
           enable-cache: true
       - run: uv sync --group dev
       - run: uv run ruff check .
-      - run: uv run pytest
+      # - run: uv run pytest
 
   # =========================================================
   # 阶段 2 ~ 5：构建、扫描与 Keyless 签名

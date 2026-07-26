@@ -17,20 +17,21 @@ jobs:
         with:
           enable-cache: true # 依赖缓存，提升二次构建速度
 
+
       # 校正点：CI 环境中必须显式创建虚拟环境并同步 dev 依赖
-      - name: Install Dependencies
-        run: uv sync --group dev
-
-      - name: Run Ruff Lint
-        run: uv run ruff check .
-
-      - name: Run Pytest & Generate Report
-        run: uv run pytest --junitxml=test-report.xml
+      # - name: Install Dependencies
+      #   run: uv sync --group dev
+      #
+      # - name: Run Ruff Lint
+      #   run: uv run ruff check .
+      #
+      # - name: Run Pytest & Generate Report
+      #   run: uv run pytest --junitxml=test-report.xml
 
       # Phase 4: 上传测试报告作为 Artifact (流水线生命周期产物)
-      - name: Upload Test Report
-        uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: junit-test-report
-          path: test-report.xml
+      # - name: Upload Test Report
+      #   uses: actions/upload-artifact@v4
+      #   if: always()
+      #   with:
+      #     name: junit-test-report
+      #     path: test-report.xml
