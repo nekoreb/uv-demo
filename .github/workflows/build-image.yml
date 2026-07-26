@@ -27,7 +27,7 @@ jobs:
           enable-cache: true
       - run: uv sync --group dev
       - run: uv run ruff check .
-      # - run: uv run pytest
+      - run: uv run pytest
 
   # =========================================================
   # 阶段 2 ~ 5：构建、扫描与 Keyless 签名
@@ -80,7 +80,7 @@ jobs:
 
       # 【阶段 4】漏洞扫描 (锁定稳定版本，设置阻断规则)
       - name: Run Trivy Scanner
-        uses: aquasecurity/trivy-action@0.28.0 # ⚠️ 修复点 6: 避免使用 master
+        uses: aquasecurity/trivy-action@0.36.0 # ⚠️ 修复点 6: 避免使用 master
         with:
           image-ref: "${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@${{ steps.build.outputs.digest }}"
           format: "table"
